@@ -46,7 +46,7 @@ if uploaded_files:
                     all_file_text += text + "\n"
     st.success(f"✅ {len(uploaded_files)} file(s) uploaded")
 
-# ===== SHOW FULL CHAT HISTORY =====
+# ===== SHOW CHAT HISTORY =====
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -56,43 +56,43 @@ col1, col2 = st.columns([5,1])
 with col1:
     prompt = st.chat_input("Type in English or Click Mic to Speak...")
 with col2:
-    audio = mic_recorder(start_prompt="🎤 Mic", stop_prompt="⏹️ Stop", key="recorder")
+    audio = mic_recorder(start_prompt="🎤 Mic", stop_prompt="⏹️ Stop", key="recorder", just_once=True)
 
-# Process Voice and convert to text
-if audio and audio["id"]!= st.session_state.last_audio_id:
+# Process Voice
+if audio and audio["bytes"] and audio["id"]!= st.session_state.last_audio_id:
     st.session_state.last_audio_id = audio["id"]
     try:
-        with st.spinner("Converting voice to text..."):
+        with st.spinner("Converting voice to text... Please wait 3 sec"):
             transcription = client.audio.transcriptions.create(
                 file=("audio.wav", audio["bytes"]),
                 model="whisper-large-v3",
             )
-        prompt = transcription.text # This becomes your question
-        st.rerun()
+        prompt = transcription.text
+        st.rerun() # Force rerun to show text
     except Exception as e:
         st.error(f"Voice Error: {e}")
 
 # ===== MAIN CHAT LOGIC =====
 if prompt:
-    # STEP 1: Show YOUR question in chat first - like WhatsApp
+    # 1. Show YOUR question
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # STEP 2: Bot answers below your question
+    # 2. Bot answers
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
 
         try:
             messages_for_api = []
-            system_prompt = "You are a helpful assistant. CRITICAL RULE: Always reply in English only. Answer the user's question directly and helpfully."
+            system_prompt = "You are a helpful assistant. CRITICAL RULE: Always reply in English only."
 
             if all_file_text:
                 system_prompt += f"\n\nUse this PDF content: \n\n{all_file_text[:12000]}"
 
             messages_for_api.append({"role": "system", "content": system_prompt})
-            messages_for_api.extend(st.session_state.messages[-6:]) # Last 6 messages for context
+            messages_for_api.extend(st.session_state.messages[-6:])
 
             stream = client.chat.completions.create(
                 model=model,
@@ -107,10 +107,8 @@ if prompt:
                     message_placeholder.markdown(full_response + "▌")
             message_placeholder.markdown(full_response)
 
-            # Save bot reply
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-            # Voice Output
             if speak_reply and full_response:
                 tts = gTTS(text=full_response, lang='en')
                 audio_bytes = io.BytesIO()
