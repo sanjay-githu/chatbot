@@ -2,12 +2,22 @@ import streamlit as st
 from groq import Groq
 import PyPDF2
 
-st.set_page_config(page_title="sanjay's Smart Chat Bot")
+st.set_page_config(page_title="sanjay's Smart Chat Bot", layout="wide")
 st.title("sanjay's Smart Chat Bot 🤖")
 
-# clear chat
-col1, col2 = st.columns([4,1])
-with col2:
+# ===== SIDEBAR SETTINGS =====
+with st.sidebar:
+    st.header("⚙️ Settings")
+    
+    model = st.selectbox(
+        "Choose Model",
+        ["llama-3.1-8b-instant", "llama-3.1-70b-versatile", "gemma2-9b-it"]
+    )
+    
+    temperature = st.slider("Creativity", 0.0, 1.0, 0.7)
+    
+    max_tokens = st.slider("Max Reply Length", 100, 4000, 1024)
+    
     if st.button("🗑️ Clear Chat"):
         st.session_state.messages = []
         st.rerun()
@@ -23,16 +33,17 @@ except:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# File Upload
-uploaded_file = st.file_uploader("📄 Upload a PDF file", type=["pdf"])
-file_text = ""
-if uploaded_file:
-    pdf_reader = PyPDF2.PdfReader(uploaded_file)
-    for page in pdf_reader.pages:
-        text = page.extract_text()
-        if text:
-            file_text += text
-    st.success(f"✅ File uploaded: {uploaded_file.name}")
+# ===== MULTIPLE FILE UPLOAD =====
+uploaded_files = st.file_uploader("📄 Upload PDF files", type=["pdf"], accept_multiple_files=True)
+all_file_text = ""
+if uploaded_files:
+    for uploaded_file in uploaded_files:
+        pdf_reader = PyPDF2.PdfReader(uploaded_file)
+        for page in pdf_reader.pages:
+            text = page.extract_text()
+            if text:
+                all_file_text += text + "\n"
+    st.success(f"✅ {len(uploaded_files)} file(s) uploaded")
 
 # Show chat history
 for message in st.session_state.messages:
@@ -40,7 +51,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # User input
-if prompt := st.chat_input("Please Enter Your queries here..."):
+if prompt := st.chat_input("Ask anything about your PDFs..."):
     
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -51,16 +62,17 @@ if prompt := st.chat_input("Please Enter Your queries here..."):
         full_response = ""
         
         try:
-            # PDF irundha, adha first message ah anupuvom
             messages_for_api = []
-            if file_text:
-                messages_for_api.append({"role": "system", "content": f"You are a helpful assistant. Use the following PDF content to answer questions: \n\n{file_text[:8000]}"})
+            if all_file_text:
+                messages_for_api.append({"role": "system", "content": f"You are a helpful assistant. Use the following PDF contents to answer questions: \n\n{all_file_text[:12000]}"})
             
             messages_for_api.extend(st.session_state.messages)
 
             stream = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+                model=model, # Sidebar la select panradhu
                 messages=messages_for_api,
+                temperature=temperature,
+                max_tokens=max_tokens,
                 stream=True,
             )
             for chunk in stream:
@@ -72,8 +84,5 @@ if prompt := st.chat_input("Please Enter Your queries here..."):
         except Exception as e:
             st.error(f"Error: {e}")
             full_response = "Sorry, something went wrong."
-
-
-
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
