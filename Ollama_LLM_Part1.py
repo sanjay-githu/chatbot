@@ -16,6 +16,7 @@ with st.sidebar:
 
     if st.button("🗑️ Clear Chat"):
         st.session_state.messages = []
+        st.session_state.voice_text = "" # Clear voice also
         st.rerun()
 
 # ===== API KEY =====
@@ -28,6 +29,8 @@ except:
 # ===== CHAT HISTORY =====
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "voice_text" not in st.session_state:
+    st.session_state.voice_text = ""
 
 # ===== PDF UPLOAD =====
 uploaded_files = st.file_uploader("📄 Upload PDF files", type=["pdf"], accept_multiple_files=True)
@@ -55,8 +58,8 @@ col1, col2 = st.columns([5,1])
 with col1:
     prompt = st.chat_input("OR Step 2: Type your question here...")
 
-# Process Voice Upload
-if audio_file:
+# FIX: Process Voice Upload ONLY ONCE
+if audio_file and st.session_state.voice_text == "":
     try:
         with st.spinner("Converting your voice to text..."):
             transcription = client.audio.transcriptions.create(
@@ -64,13 +67,18 @@ if audio_file:
                 model="whisper-large-v3",
                 language="en"
             )
+        st.session_state.voice_text = transcription.text # Save it
         prompt = transcription.text
         st.success(f"You said: {prompt}")
+        st.rerun() # Rerun to clear the uploader
     except Exception as e:
         st.error(f"Voice Error: {e}")
 
-# ===== MAIN CHAT LOGIC =====
+# If typed text
 if prompt:
+    # Clear voice_text so next time new audio can be used
+    st.session_state.voice_text = ""
+    
     # 1. Show YOUR question
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
