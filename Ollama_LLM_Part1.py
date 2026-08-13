@@ -52,7 +52,7 @@ if prompt := st.chat_input("Please Enter Your queries here..."):
             messages_for_api.extend(st.session_state.messages)
 
             stream = client.chat.completions.create(
-                model="llama3-8b-8192",
+                model="llama-3.1-8b-instant",
                 messages=messages_for_api,
                 stream=True,
             )
