@@ -1,3 +1,5 @@
 streamlit
 groq
 PyPDF2
+streamlite-mic-recorder
+gTTS
