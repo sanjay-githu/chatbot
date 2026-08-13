@@ -1,9 +1,9 @@
 import streamlit as st
 from groq import Groq
 import PyPDF2
-from streamlit_mic_recorder import mic_recorder
 from gtts import gTTS
 import io
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="sanjay's Smart Chat Bot", layout="wide")
 st.title("sanjay's Smart Chat Bot 🤖🎤")
@@ -17,7 +17,6 @@ with st.sidebar:
 
     if st.button("🗑️ Clear Chat"):
         st.session_state.messages = []
-        st.session_state.last_audio_id = None
         st.rerun()
 
 # ===== API KEY =====
@@ -30,8 +29,8 @@ except:
 # ===== CHAT HISTORY =====
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "last_audio_id" not in st.session_state:
-    st.session_state.last_audio_id = None
+if "voice_text" not in st.session_state:
+    st.session_state.voice_text = ""
 
 # ===== PDF UPLOAD =====
 uploaded_files = st.file_uploader("📄 Upload PDF files", type=["pdf"], accept_multiple_files=True)
@@ -51,26 +50,46 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# ===== VOICE INPUT + TEXT INPUT =====
-col1, col2 = st.columns([5,1])
-with col1:
-    prompt = st.chat_input("Type in English or Click Mic to Speak...")
-with col2:
-    audio = mic_recorder(start_prompt="🎤 Mic", stop_prompt="⏹️ Stop", key="recorder", just_once=True)
+# ===== VOICE INPUT BUTTON - BROWSER MIC =====
+components.html(
+    """
+    <button id="startBtn" style="background:#4CAF50;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:16px;">🎤 Speak</button>
+    <script>
+    const startBtn = document.getElementById('startBtn');
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
 
-# Process Voice
-if audio and audio["bytes"] and audio["id"]!= st.session_state.last_audio_id:
-    st.session_state.last_audio_id = audio["id"]
-    try:
-        with st.spinner("Converting voice to text... Please wait 3 sec"):
-            transcription = client.audio.transcriptions.create(
-                file=("audio.wav", audio["bytes"]),
-                model="whisper-large-v3",
-            )
-        prompt = transcription.text
-        st.rerun() # Force rerun to show text
-    except Exception as e:
-        st.error(f"Voice Error: {e}")
+    startBtn.onclick = () => {
+        recognition.start();
+        startBtn.innerText = "⏹️ Listening...";
+    }
+
+    recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        window.parent.postMessage({type: "voice", text: transcript}, "*");
+        startBtn.innerText = "🎤 Speak";
+    }
+
+    recognition.onerror = () => {
+        startBtn.innerText = "🎤 Speak";
+    }
+    </script>
+    """,
+    height=50,
+)
+
+# Get voice text from JS
+if "voice_text" not in st.session_state:
+    st.session_state.voice_text = ""
+
+# ===== TEXT INPUT =====
+prompt = st.chat_input("Type in English or Click 🎤 Speak button above", key="chat_input")
+
+# Check if voice came
+if st.session_state.get("voice_text"):
+    prompt = st.session_state.voice_text
+    st.session_state.voice_text = "" # clear it
 
 # ===== MAIN CHAT LOGIC =====
 if prompt:
@@ -95,11 +114,8 @@ if prompt:
             messages_for_api.extend(st.session_state.messages[-6:])
 
             stream = client.chat.completions.create(
-                model=model,
-                messages=messages_for_api,
-                temperature=temperature,
-                max_tokens=1024,
-                stream=True,
+                model=model, messages=messages_for_api,
+                temperature=temperature, max_tokens=1024, stream=True,
             )
             for chunk in stream:
                 if chunk.choices[0].delta.content:
@@ -119,3 +135,22 @@ if prompt:
             st.error(f"Error: {e}")
             full_response = "Sorry, something went wrong."
             st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+# JS to Python bridge
+components.html(
+    """
+    <script>
+    window.addEventListener("message", (event) => {
+        if (event.data.type === "voice") {
+            const text = event.data.text;
+            const input = window.parent.document.querySelector('input[type="text"]');
+            if(input) {
+                input.value = text;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+    });
+    </script>
+    """,
+    height=0,
+)
