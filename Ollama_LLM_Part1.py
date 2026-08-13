@@ -5,6 +5,13 @@ import PyPDF2
 st.set_page_config(page_title="sanjay's Smart Chat Bot")
 st.title("sanjay's Smart Chat Bot 🤖")
 
+# clear chat
+col1, col2 = st.columns([4,1])
+with col2:
+    if st.button("🗑️ Clear Chat"):
+        st.session_state.messages = []
+        st.rerun()
+
 # API Key
 try:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
