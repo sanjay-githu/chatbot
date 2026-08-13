@@ -3,7 +3,6 @@ from groq import Groq
 import PyPDF2
 from gtts import gTTS
 import io
-import streamlit.components.v1 as components
 
 st.set_page_config(page_title="sanjay's Smart Chat Bot", layout="wide")
 st.title("sanjay's Smart Chat Bot 🤖🎤")
@@ -23,14 +22,12 @@ with st.sidebar:
 try:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except:
-    st.error("GROQ_API_KEY not found!")
+    st.error("GROQ_API_KEY not found in Secrets!")
     st.stop()
 
 # ===== CHAT HISTORY =====
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "voice_text" not in st.session_state:
-    st.session_state.voice_text = ""
 
 # ===== PDF UPLOAD =====
 uploaded_files = st.file_uploader("📄 Upload PDF files", type=["pdf"], accept_multiple_files=True)
@@ -50,46 +47,27 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# ===== VOICE INPUT BUTTON - BROWSER MIC =====
-components.html(
-    """
-    <button id="startBtn" style="background:#4CAF50;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:16px;">🎤 Speak</button>
-    <script>
-    const startBtn = document.getElementById('startBtn');
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.lang = 'en-US';
-    recognition.continuous = false;
+# ===== VOICE UPLOAD + TEXT INPUT =====
+st.write("**🎤 Step 1: Record voice and upload.wav or.mp3 file**")
+audio_file = st.file_uploader("Upload your voice recording", type=["wav", "mp3", "m4a"], key="voice_upload")
 
-    startBtn.onclick = () => {
-        recognition.start();
-        startBtn.innerText = "⏹️ Listening...";
-    }
+col1, col2 = st.columns([5,1])
+with col1:
+    prompt = st.chat_input("OR Step 2: Type your question here...")
 
-    recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        window.parent.postMessage({type: "voice", text: transcript}, "*");
-        startBtn.innerText = "🎤 Speak";
-    }
-
-    recognition.onerror = () => {
-        startBtn.innerText = "🎤 Speak";
-    }
-    </script>
-    """,
-    height=50,
-)
-
-# Get voice text from JS
-if "voice_text" not in st.session_state:
-    st.session_state.voice_text = ""
-
-# ===== TEXT INPUT =====
-prompt = st.chat_input("Type in English or Click 🎤 Speak button above", key="chat_input")
-
-# Check if voice came
-if st.session_state.get("voice_text"):
-    prompt = st.session_state.voice_text
-    st.session_state.voice_text = "" # clear it
+# Process Voice Upload
+if audio_file:
+    try:
+        with st.spinner("Converting your voice to text..."):
+            transcription = client.audio.transcriptions.create(
+                file=(audio_file.name, audio_file.read()),
+                model="whisper-large-v3",
+                language="en"
+            )
+        prompt = transcription.text
+        st.success(f"You said: {prompt}")
+    except Exception as e:
+        st.error(f"Voice Error: {e}")
 
 # ===== MAIN CHAT LOGIC =====
 if prompt:
@@ -105,7 +83,7 @@ if prompt:
 
         try:
             messages_for_api = []
-            system_prompt = "You are a helpful assistant. CRITICAL RULE: Always reply in English only."
+            system_prompt = "You are a helpful assistant. CRITICAL RULE: Always reply in English only. Answer directly."
 
             if all_file_text:
                 system_prompt += f"\n\nUse this PDF content: \n\n{all_file_text[:12000]}"
@@ -135,22 +113,3 @@ if prompt:
             st.error(f"Error: {e}")
             full_response = "Sorry, something went wrong."
             st.session_state.messages.append({"role": "assistant", "content": full_response})
-
-# JS to Python bridge
-components.html(
-    """
-    <script>
-    window.addEventListener("message", (event) => {
-        if (event.data.type === "voice") {
-            const text = event.data.text;
-            const input = window.parent.document.querySelector('input[type="text"]');
-            if(input) {
-                input.value = text;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-        }
-    });
-    </script>
-    """,
-    height=0,
-)
